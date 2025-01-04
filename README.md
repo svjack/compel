@@ -1,3 +1,210 @@
+---
+
+# Compel: Text Prompt Weighting and Blending Library
+
+Compel is a powerful library for text prompt weighting and blending, designed for transformers-type text embedding systems. It supports advanced features like **SDXL (Stable Diffusion XL)** and provides flexible syntax for re-weighting and concatenating prompt embeddings. This README provides an overview of installation, usage, and key features.
+
+---
+
+## Installation
+
+Install Compel using pip:
+
+```bash
+pip install compel
+```
+
+Ensure you have the required dependencies, such as `diffusers` and `torch`. If not, install them as follows:
+
+```bash
+pip install diffusers torch
+```
+
+---
+
+## Quickstart
+
+### Example 1: Basic SDXL Usage
+
+Here’s how to use Compel with SDXL for text-to-image generation:
+
+```python
+from compel import Compel, ReturnedEmbeddingsType
+from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
+import torch
+
+# Initialize the DiffusionPipeline with SDXL
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "svjack/GenshinImpact_XL_Base",
+    torch_dtype=torch.float16
+).to("cuda")
+
+# Initialize Compel for SDXL
+compel = Compel(
+    tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2],
+    text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2],
+    returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+    requires_pooled=[False, True]
+)
+
+# Define your prompt
+prompt = "a cat playing with a ball++ in the forest"
+
+# Generate conditioning tensors
+conditioning, pooled = compel(prompt)
+
+# Generate the image
+image = pipeline(
+    prompt_embeds=conditioning, 
+    pooled_prompt_embeds=pooled, 
+    num_inference_steps=30
+).images[0]
+
+# Save the image
+image.save("cat_image.jpg")
+
+# Display the image
+from IPython import display
+display.Image("cat_image.jpg", width=512, height=512)
+```
+![cat_image](https://github.com/user-attachments/assets/2bdae941-e800-4aeb-baa0-a62d4c0de678)
+
+---
+
+### Example 2: Using `.and()` for Concatenated Embeddings
+
+For more complex prompts, you can use the `.and()` syntax to concatenate embeddings. This example combines two characters from Genshin Impact:
+
+```python
+# Initialize Compel for SDXL
+compel = Compel(
+    tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2],
+    text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2],
+    returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+    requires_pooled=[False, True]
+)
+
+# Define your prompt segments using .and() syntax
+prompt = '("ZHONGLI\(genshin impact\),1boy,highres", "NINGGUANG\(genshin impact\),1boy,highres").and()'
+
+# Generate conditioning tensors
+conditioning, pooled = compel(prompt)
+
+# Generate the image
+image = pipeline(
+    prompt_embeds=conditioning, 
+    pooled_prompt_embeds=pooled, 
+    num_inference_steps=30
+).images[0]
+
+# Save the image
+image.save("ZHONGLI_NINGGUANG.png")
+
+# Display the image
+display.Image("ZHONGLI_NINGGUANG.png", width=512, height=512)
+```
+
+![ZHONGLI_NINGGUANG](https://github.com/user-attachments/assets/225d5769-723d-41e9-ad33-16667eada201)
+
+
+---
+
+### Example 3: Combining Multiple Characters with `.and()`
+
+This example demonstrates how to combine two more characters from Genshin Impact using `.and()`:
+
+```python
+# Initialize Compel for SDXL
+compel = Compel(
+    tokenizer=[pipeline.tokenizer, pipeline.tokenizer_2],
+    text_encoder=[pipeline.text_encoder, pipeline.text_encoder_2],
+    returned_embeddings_type=ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED,
+    requires_pooled=[False, True]
+)
+
+# Define your prompt segments using .and() syntax
+prompt = '("KAEDEHARA KAZUHA\(genshin impact\),1boy,highres", "scaramouche\(genshin impact\),1boy,highres").and()'
+
+# Generate conditioning tensors
+conditioning, pooled = compel(prompt)
+
+# Generate the image
+image = pipeline(
+    prompt_embeds=conditioning, 
+    pooled_prompt_embeds=pooled, 
+    num_inference_steps=30
+).images[0]
+
+# Save the image
+image.save("KAZUHA_scaramouche.png")
+
+# Display the image
+display.Image("KAZUHA_scaramouche.png", width=512, height=512)
+```
+
+
+![KAZUHA_scaramouche](https://github.com/user-attachments/assets/a86fc127-d715-4877-9b49-c6257145de78)
+
+---
+
+### Testing `.and()` Functionality
+
+The `.and()` method concatenates embeddings from multiple prompts. Here’s an example of how it works in a test case:
+
+```python
+def test_concat_for_and(self):
+    max_length = 5
+    tokenizer = DummyTokenizer(model_max_length=max_length)
+    text_encoder = DummyTransformer()
+    compel = Compel(tokenizer=tokenizer, text_encoder=text_encoder, truncate_long_prompts=False)
+
+    # Test concatenation of two prompts
+    embeds_separate = compel(['a b c', 'b a'])
+    embeds_concat = compel('("a b c", "b a").and()')
+    self.assertTrue(torch.allclose(embeds_concat, torch.reshape(embeds_separate, [1, 10, 768])))
+
+    # Test concatenation of longer prompts
+    embeds_separate = torch.concat([compel('a b c a b c a b c'), compel('b a')], dim=1)
+    embeds_concat = compel('("a b c a b c a b c", "b a").and()')
+    self.assertTrue(torch.allclose(embeds_concat, embeds_separate))
+```
+
+---
+
+### Key Features
+
+1. **SDXL Support**:
+   - Compel supports SDXL by using two tokenizers and two text encoders.
+   - Use `ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NON_NORMALIZED` for SDXL.
+
+2. **Prompt Weighting and Blending**:
+   - Adjust the weight of specific parts of a prompt using `++` or `--`.
+
+3. **Concatenated Embeddings with `.and()`**:
+   - Break complex prompts into segments and concatenate their embeddings for better results.
+
+4. **Memory Efficiency**:
+   - Run Compel inside `with torch.no_grad():` blocks to avoid memory leaks.
+
+---
+
+### Breaking Changes
+
+- **Clip Skip**: The old boolean argument `use_penultimate_clip_layer` has been replaced with the enum `ReturnedEmbeddingsType.PENULTIMATE_HIDDEN_STATES_NORMALIZED`.
+
+---
+
+## Conclusion
+
+Compel is a versatile library for text prompt manipulation, enabling advanced text-to-image generation with models like SDXL. The `.and()` syntax allows for more complex and nuanced prompts, improving the quality of generated images. For more details, refer to the [Compel documentation](https://github.com/damian0815/compel).
+
+Happy generating! 🎨
+
+--- 
+
+Let me know if you need further adjustments! 🖼️
+
+
 # Compel
 A text prompt weighting and blending library for transformers-type text embedding systems, by [@damian0815](https://github.com/damian0815).
 
